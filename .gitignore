@@ -1,2 +1,7 @@
 *.csv
 model
+data
+pdf
+.ipynb_checkpoints
+.RData
+.Rhistory
