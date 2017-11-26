@@ -62,6 +62,7 @@
 
 setwd('/Users/kojin/projects/doc2vec/2016_survey')
 library('Matching')
+library('data.table')
 require(reshape2)
 
 df <- read.csv('data/selected_survey.csv')
@@ -80,48 +81,65 @@ barplot(prop.table(table(df$did_others_contact)),main='did_others_contact')
 barplot(prop.table(table(df$turnout)),main='turnout')
 barplot(prop.table(table(factor(paste(df$did_party_contact, df$did_others_contact, sep=':')))),main='party:others')
 
-###
-#common
-###
-non_cov_cols   <- c('id','did_party_contact','did_others_contact','turnout','concat_text','treatment','response')
-df$turnout_bin <- df$turnout != -1
-
 find_match <- function(response,treatment,covariates,sub_df,output_fname) {
   match <- Match(Y=response,Tr=treatment,X=covariates)
   matches <- data.frame(sub_df[match$index.treated,]$concat_text,sub_df[match$index.control,]$concat_text)
   fwrite(matches,output_fname)
   cat('Causal Effect:',match$est,'\n')
   cat('Standard Error:',match$se.standard,'\n')
-  summary(lm(response ~ treatment, data=df))
+  cat('Coefficients:')
+  print(summary$coefficients)
+  summary=summary(lm(response ~ treatment, data=sub_df))
+  cat('Coefficients:',summary$coefficients)
+  list(match=match,summary=summary)
 }
+
+match_two <- function(ids,df,root_fname) {
+  sub_df     <- df[ids,]
+  treatment  <- sub_df$treatment
+  sum(treatment)/length(treatment)
+  response   <- sub_df$turnout_bin
+  text_covariates <- sub_df[,!names(sub_df) %in% non_cov_cols_text]
+  choice_covariates <- sub_df[,!names(sub_df) %in% non_cov_cols_choice]
+  print('text matching')
+  res_text   <- find_match(response,treatment,text_covariates,sub_df,paste0(root_fname,'text.csv'))
+  cat('\n\n')
+  print('choice matching')
+  res_choice <- find_match(response,treatment,choice_covariates,sub_df,paste0(root_fname,'choice.csv'))
+  c(res_text,res_choice)
+}
+
+weight_cols <- c()
+for (i in 0:299){
+  weight_cols[i+1] <- paste0("weight_", i)
+}
+
+###
+#common for text matching
+###
+df$turnout_bin <- df$turnout != -1
+non_cov <- c('id','did_party_contact','did_others_contact','turnout','concat_text','treatment','response','turnout_bin')
+non_cov_cols_text   <- c(non_cov,c('republican_feelings','democrat_feelings'))
+non_cov_cols_choice   <- c(non_cov,weight_cols)
+
 
 #################
 # 1) contact by party as treatment
 #################
-sub_df     <- df[df$did_party_contact %in% c(1,2),]
-treatment  <- sub_df$did_party_contact == 1
-sum(treatment)/length(treatment)
-response   <- sub_df$turnout_bin
-covariates <- sub_df[,!names(sub_df) %in% non_cov_cols]
-find_match(response,treatment,covariates,sub_df,'data/party_contact_matches.csv')
+ids <- df$did_party_contact %in% c(1,2)
+df$treatment  <- df$did_party_contact == 1
+res <- match_two(ids,df,'data/party_contact_matches_')
 
 #################
 # 2) contact by others as treatment
 #################
-sub_df     <- df[df$did_others_contact %in% c(1,2),]
-treatment  <- sub_df$did_others_contact == 1
-sum(treatment)/length(treatment)
-response   <- sub_df$turnout_bin
-covariates <- sub_df[,!names(sub_df) %in% non_cov_cols]
-find_match(response,treatment,covariates,sub_df,'data/others_contact_matches.csv')
+ids <- df$did_others_contact %in% c(1,2)
+df$treatment  <- df$did_others_contact == 1
+res <- match_two(ids,df,'data/others_contact_matches_')
 
 #################
 # 3) contacted by either party or others as treatment
 #################
-sub_df     <- df[(df$did_party_contact %in% c(1,2)) & (df$did_others_contact %in% c(1,2)),]
-treatment  <- sub_df$did_party_contact == 1 | sub_df$did_others_contact == 1
-sum(treatment)/length(treatment)
-response   <- sub_df$turnout_bin
-covariates <- sub_df[,!names(sub_df) %in% non_cov_cols]
-find_match(response,treatment,covariates,sub_df,'data/party_or_others_contact_matches.csv')
-
+ids <- df$did_party_contact %in% c(1,2) & df$did_others_contact %in% c(1,2)
+df$treatment  <- df$did_party_contact == 1 | df$did_others_contact == 1
+res <- match_two(ids,df,'data/party_or_others_contact_matches_')
