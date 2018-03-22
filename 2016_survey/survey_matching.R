@@ -87,17 +87,13 @@ find_match <- function(response,treatment,covariates,sub_df,output_fname) {
   fwrite(matches,output_fname)
   cat('Causal Effect:',match$est,'\n')
   cat('Standard Error:',match$se.standard,'\n')
-  cat('Coefficients:')
-  print(summary$coefficients)
-  summary=summary(lm(response ~ treatment, data=sub_df))
-  cat('Coefficients:',summary$coefficients)
-  list(match=match,summary=summary)
+  match
 }
 
 match_two <- function(ids,df,root_fname) {
   sub_df     <- df[ids,]
   treatment  <- sub_df$treatment
-  sum(treatment)/length(treatment)
+  print(sum(treatment)/length(treatment))
   response   <- sub_df$turnout_bin
   text_covariates <- sub_df[,!names(sub_df) %in% non_cov_cols_text]
   choice_covariates <- sub_df[,!names(sub_df) %in% non_cov_cols_choice]
@@ -106,7 +102,11 @@ match_two <- function(ids,df,root_fname) {
   cat('\n\n')
   print('choice matching')
   res_choice <- find_match(response,treatment,choice_covariates,sub_df,paste0(root_fname,'choice.csv'))
-  c(res_text,res_choice)
+  cat('\n\n')
+  cat('Regress Treatment on Reponse, Coefficients:\n')
+  summary=summary(lm(response ~ treatment, data=sub_df))
+  print(summary$coefficients)
+  
 }
 
 weight_cols <- c()
@@ -143,3 +143,11 @@ res <- match_two(ids,df,'data/others_contact_matches_')
 ids <- df$did_party_contact %in% c(1,2) & df$did_others_contact %in% c(1,2)
 df$treatment  <- df$did_party_contact == 1 | df$did_others_contact == 1
 res <- match_two(ids,df,'data/party_or_others_contact_matches_')
+
+
+match on age education income (run logit)
+match on the text covariates (run logit)
+
+full match on age education income and text covariates
+full match on age education income
+

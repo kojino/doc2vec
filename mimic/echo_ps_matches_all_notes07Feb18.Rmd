@@ -1,0 +1,106 @@
+---
+title: "echo_ps_matching_noteevents"
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+
+### Libraries
+
+```{r}
+library("data.table")
+library("openxlsx")
+```
+
+### Load Data
+
+```{r}
+dat <- read.xlsx("echo_ps_matching_outcomes.xlsx", sheet = 1, colNames = TRUE)
+# Convert colnames to uppercase for ease
+colnames(dat) <- toupper(colnames(dat))
+str(dat)
+nrow(dat)
+```
+
+### Load MIMIC Flat Files
+
+```{r}
+#Load ICUSTAYS to merge on ICUSTAY_ID
+icu <- fread(paste0(getwd(),"/MIMIC/ICUSTAYS.csv"), header = T, stringsAsFactors = F)
+
+#Load NOTEEVENTS for notes
+notes <- fread(paste0(getwd(), "/MIMIC/NOTEEVENTS.csv"), header = T, stringsAsFactors = F)
+```
+
+### Join Tables and Check
+
+```{r}
+# Merge data to ICUSTAYS on ICUSTAY_ID
+res <- merge(dat, icu, by = "ICUSTAY_ID")
+cat("Data Check (Row Count):", nrow(res) == nrow(dat), '\n')
+cat("ICUSTAY_ID Check:", all(dat$ICUSTAY_ID %in% res$ICUSTAY_ID), '\n')
+
+#Drop SUBJECT_ID and ROW_ID from res to avoid duplicate columns
+res$SUBJECT_ID <- NULL
+res$ROW_ID <- NULL
+
+# Merge data to NOTEEVENTS on HADM_ID associated with ICUSTAY_ID
+res <- merge(res, notes, by = "HADM_ID")
+
+#Check ICUSTAYS after joining
+cat("ICUSTAY_ID Check:", all(dat$ICUSTAY_ID %in% res$ICUSTAY_ID), '\n')
+#How many ICUSTAYS not represented?
+which(!dat$ICUSTAY_ID %in% res$ICUSTAY_ID)
+#Which?
+(tmp <- dat[which(!dat$ICUSTAY_ID %in% res$ICUSTAY_ID),])
+#How many?
+nrow(tmp)
+#Write to file for later access
+write.csv(tmp, file = "echo_ps_matches_no_note_IDs.csv", row.names = F)
+```
+
+## Check Results
+
+```{r}
+#Unique Patients
+cat("Unique Patients:", length(unique(res$SUBJECT_ID)), '\n')
+#Account for them
+cat("Check that input data less ICUSTAY_IDs without matches equals unique patients:", (nrow(dat)-nrow(tmp)) == length(unique(res$SUBJECT_ID)), '\n')
+```
+
+## Keep only Nursing and Physicians Notes
+
+```{r}
+res_notes <- res[grepl("nursing", 
+                       res$CATEGORY,ignore.case = TRUE) | 
+                 grepl("physician", 
+                       res$CATEGORY, ignore.case = TRUE), ]
+#Inspect levels to ensure it worked appropriately
+levels(factor(res_notes$CATEGORY))
+```
+
+## Check Results
+
+```{r}
+#Unique Patients
+cat("Unique Patients:", length(unique(res_notes$SUBJECT_ID)), '\n')
+# Some dropped, account for them
+tmp <- res[which(!res$SUBJECT_ID %in% res_notes$SUBJECT_ID),]
+#Account for them
+nrow(tmp)
+#Write to file for later access
+write.csv(tmp, file = "echo_ps_matches_no_nursing_phys_notes.csv", row.names = F)
+```
+
+## Remove Duplicate Text and Output File
+
+```{r}
+out <- res_notes[!duplicated(res_notes$TEXT), ]
+cat("Dropped", nrow(res_notes) - nrow(out), "duplicated texts\n")
+#Write to file for later access
+dupes <- res_notes[duplicated(res_notes$TEXT), ]
+write.csv(dupes, file = "echo_ps_matches_duplicated_note_entries.csv", row.names = F)
+#Write output file
+write.csv(out, file = "echo_ps_matches_all_notes07Feb18.csv", row.names = F)
+```
